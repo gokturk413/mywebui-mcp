@@ -6,7 +6,8 @@ function fakeFetch(handler) {
     const calls = [];
     const f = async (url, init = {}) => {
         calls.push({ url: String(url), init });
-        const { status = 200, body } = await handler(String(url), init, calls.length);
+        const { status = 200, body, text } = await handler(String(url), init, calls.length);
+        if (text !== undefined) return new Response(text, { status, headers: { 'content-type': 'text/html' } });
         return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
     };
     f.calls = calls;
@@ -69,8 +70,38 @@ test('HTTP errors, a missing gateway, no credentials', async () => {
     assert.equal(fOpen.calls[0].init.headers.Authorization, undefined);
 });
 
-test('the password never appears in an error message', async () => {
-    const f = fakeFetch(() => ({ status: 500, body: { error: 'boom' } }));
-    const c = new GatewayClient({ url: 'http://h', user: 'agent', password: 's3cr3t-pw', fetchImpl: f });
-    await assert.rejects(c.call('mcpInfo'), (e) => !String(e.message).includes('s3cr3t-pw'));
+test('the password never appears in an error (login failure and gateway error)', async () => {
+    const PW = 's3cr3t-pw';
+    const leaks = (e) => [e.message, String(e), JSON.stringify(e)].some((t) => t.includes(PW));
+    // the server echoes the raw request body back in its error text
+    const fLogin = fakeFetch((url, init) => ({ status: 401, body: { error: String(init.body) } }));
+    await assert.rejects(new GatewayClient({ url: 'http://h', user: 'agent', password: PW, fetchImpl: fLogin }).call('mcpInfo'),
+        (e) => e.code === 'login' && !leaks(e));
+    const fCall = fakeFetch((url, init) => url.endsWith('/oauth/token')
+        ? { body: { access_token: 'A1' } }
+        : { status: 500, body: { error: String(init.body) } });
+    await assert.rejects(new GatewayClient({ url: 'http://h', user: 'agent', password: PW, fetchImpl: fCall }).call('mcpInfo', { password: PW }),
+        (e) => e.code === 'http' && !leaks(e));
+});
+
+test('a 2xx answer that is not JSON is an http error', async () => {
+    const f = fakeFetch(() => ({ text: '<html>login</html>' }));
+    await assert.rejects(new GatewayClient({ url: 'http://h', token: 'T', fetchImpl: f }).call('mcpInfo'),
+        (e) => e.code === 'http' && e.status === 200 && /not JSON/.test(e.message));
+});
+
+test('a network failure becomes a network error without secrets', async () => {
+    const f = async () => { throw new TypeError('fetch failed'); };
+    await assert.rejects(new GatewayClient({ url: 'http://scada:8082', user: 'a', password: 'pw-x', fetchImpl: f }).call('mcpInfo'),
+        (e) => e.code === 'network' && /scada:8082 unreachable: fetch failed/.test(e.message) && !e.message.includes('pw-x'));
+    await assert.rejects(new GatewayClient({ url: 'http://scada:8082', token: 'T', fetchImpl: f }).call('mcpInfo'),
+        (e) => e.code === 'network' && e.message.startsWith('mcpInfo:'));
+});
+
+test('a timeout becomes a timeout error', async () => {
+    const f = (url, init) => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason)));
+    await assert.rejects(new GatewayClient({ url: 'http://h', token: 'T', callTimeoutMs: 20, fetchImpl: f }).call('mcpInfo'),
+        (e) => e.code === 'timeout');
+    await assert.rejects(new GatewayClient({ url: 'http://h', user: 'a', password: 'p', loginTimeoutMs: 20, fetchImpl: f }).call('mcpInfo'),
+        (e) => e.code === 'timeout');
 });

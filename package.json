@@ -6,7 +6,7 @@
   "bin": { "mywebui-mcp": "bin/mywebui-mcp.js" },
   "files": ["bin/", "src/", "skills/", "README.md", "LICENSE"],
   "engines": { "node": ">=20" },
-  "scripts": { "test": "node --test \"test/*.test.js\"", "sync-skills": "node scripts/sync-skills.mjs" },
+  "scripts": { "test": "node --test", "sync-skills": "node scripts/sync-skills.mjs" },
   "keywords": ["mcp", "model-context-protocol", "iobroker", "mywebui", "scada", "hmi"],
   "author": "gokturk413",
   "license": "CC-BY-NC-4.0",
