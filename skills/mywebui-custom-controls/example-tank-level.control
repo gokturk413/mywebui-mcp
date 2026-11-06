@@ -1,0 +1,57 @@
+{
+  "properties": {
+    "signal": {
+      "type": "signal",
+      "default": ""
+    },
+    "unit": {
+      "type": "string",
+      "default": "%"
+    },
+    "max": {
+      "type": "number",
+      "default": 100
+    },
+    "decimals": {
+      "type": "number",
+      "default": 1
+    },
+    "alarmHigh": {
+      "type": "number",
+      "default": 90
+    },
+    "ackSignal": {
+      "type": "signal",
+      "default": ""
+    }
+  },
+  "settings": {
+    "width": "160px",
+    "height": "260px"
+  },
+  "html": "<div class=\"tk\" bind-class:alarm=\"?signal;??alarmHigh;Number(__0) >= Number(__1)\">\n  <div class=\"tk-title\"><t-t>title</t-t></div>\n  <div class=\"tk-body\">\n    <div class=\"tk-fill\" bind-css:height=\"?signal;??max;Math.max(0, Math.min(100, 100 * Number(__0) / Number(__1))) + '%'\"></div>\n  </div>\n  <div class=\"tk-value\">\n    <span bind-content:text=\"?signal;??decimals;Number(__0).toFixed(Number(__1))\"></span>\n    <span>[[text:this.unit]]</span>\n  </div>\n  <button class=\"tk-ack\" show=\"[[!!this.ackSignal]]\" @click=\"[[this.ack()]]\"><t-t>ack</t-t></button>\n</div>",
+  "style": ":host{display:block;width:100%;height:100%;box-sizing:border-box;font-family:'Segoe UI',Roboto,sans-serif;color:var(--ui-text,#e2e6ec);}\n.tk{display:flex;flex-direction:column;gap:6px;height:100%;padding:8px;box-sizing:border-box;background:var(--ui-surface,#252b38);border:1px solid var(--ui-border,#3b4250);border-radius:8px;-webkit-backdrop-filter:var(--ui-backdrop,none);backdrop-filter:var(--ui-backdrop,none);}\n.tk-title{font-size:13px;color:var(--ui-dim,#9aa3b0);}\n.tk-body{position:relative;flex:1;background:var(--ui-surface-2,#2f3545);border-radius:4px;overflow:hidden;}\n.tk-fill{position:absolute;left:0;right:0;bottom:0;background:var(--accent,#2680eb);}\n.tk.alarm .tk-fill{background:var(--ui-error,#ef4d5e);}\n.tk-value{font-size:20px;text-align:center;}\n.tk-ack{border:1px solid var(--ui-border,#3b4250);background:var(--ui-input,#3a3f4b);color:var(--ui-text,#e2e6ec);border-radius:4px;padding:4px;cursor:pointer;}\n.tk-ack:hover{background:color-mix(in srgb,var(--accent,#2680eb) 22%,transparent);}",
+  "script": "// The level, the fill and the alarm colour are bindings; the script only writes the acknowledge.\n// Nothing is registered outside the control, so disconnectedCallback has nothing to undo.\nexport function init(instance) {\n    instance.ack = async () => {\n        if (!instance.ackSignal) return;\n        await IOB.setState(instance.ackSignal, true, undefined, { feedback: instance });\n        const r = await IOB.whenWriteConfirmed(instance.ackSignal);\n        if (r.confirmed === false) console.warn('acknowledge not confirmed:', r.reason);\n    };\n}\nexport function disconnectedCallback(instance) {}\n",
+  "translations": {
+    "en": {
+      "title": "Tank level",
+      "ack": "Acknowledge"
+    },
+    "az": {
+      "title": "Çən səviyyəsi",
+      "ack": "Təsdiqlə"
+    },
+    "ru": {
+      "title": "Уровень бака",
+      "ack": "Квитировать"
+    },
+    "de": {
+      "title": "Tankfüllstand",
+      "ack": "Quittieren"
+    },
+    "tr": {
+      "title": "Tank seviyesi",
+      "ack": "Onayla"
+    }
+  }
+}
