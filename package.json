@@ -1,0 +1,15 @@
+{
+  "name": "@gokturk413/mywebui-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for mywebui (ioBroker SCADA/HMI): AI coding agents list, read, check and write screens, controls and reports",
+  "type": "module",
+  "bin": { "mywebui-mcp": "bin/mywebui-mcp.js" },
+  "files": ["bin/", "src/", "skills/", "README.md", "LICENSE"],
+  "engines": { "node": ">=20" },
+  "scripts": { "test": "node --test \"test/*.test.js\"", "sync-skills": "node scripts/sync-skills.mjs" },
+  "keywords": ["mcp", "model-context-protocol", "iobroker", "mywebui", "scada", "hmi"],
+  "author": "gokturk413",
+  "license": "CC-BY-NC-4.0",
+  "repository": { "type": "git", "url": "https://github.com/gokturk413/mywebui-mcp.git" },
+  "dependencies": { "@modelcontextprotocol/sdk": "^1.32.2", "zod": "^4.1.0" }
+}
