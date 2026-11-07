@@ -35,12 +35,12 @@ export function createServer({ client, skills, version }) {
     }, forward('mcpRead', (a) => ({ ...a, project: a.project ?? 'default' })));
     server.registerTool('mywebui_validate', {
         title: 'mywebui: check a document',
-        description: 'Checks a screen / control / report JSON the way the designer would store it, and scans its code (eval, network, cookies …). Writes nothing.',
-        inputSchema: { kind, content: z.string().describe('the document as JSON text') },
+        description: 'Checks a screen / control / report JSON the way the designer would store it, and scans its code (eval, network, cookies, state writes …). Writes nothing. For an update of a report give project and name: it is compared with the stored file.',
+        inputSchema: { kind, content: z.string().describe('the document as JSON text'), project: project.optional(), name: name.optional() },
     }, forward('mcpValidate'));
     server.registerTool('mywebui_write', {
         title: 'mywebui: write a document',
-        description: 'Creates or replaces a screen, control or report in a dev project. The old file is kept as a backup; open designers refresh. Read the mywebui-custom-controls / mywebui-screens skill first (mywebui_guide).',
+        description: 'Creates or replaces a screen, control or report in a dev project. The old file is kept as a backup; open runtime pages refresh; an open designer tab does not. State writes in its code come back as findings. The output, schedule and trigger of a report can only be set in the designer. Read the mywebui-custom-controls / mywebui-screens skill first (mywebui_guide).',
         inputSchema: { project, kind, name, content: z.string().describe('the document as JSON text'), baseSha256: z.string().optional().describe('the sha256 mywebui_read returned; refused with conflict if the file changed since') },
     }, forward('mcpWrite'));
     server.registerTool('mywebui_create_project', {
@@ -50,7 +50,7 @@ export function createServer({ client, skills, version }) {
     }, forward('mcpCreateProject'));
     server.registerTool('mywebui_search_states', {
         title: 'ioBroker: find states to bind',
-        description: 'ioBroker states matching a pattern with * (e.g. modbus.0.holdingRegisters.*): id, name, type, role, unit, writable. Read-only.',
+        description: 'ioBroker states matching a pattern with *, beginning with an adapter and instance (e.g. modbus.0.holdingRegisters.*): id, name, type, role, unit, writable. Read-only.',
         inputSchema: { pattern: z.string(), limit: z.number().int().min(1).max(500).optional() },
     }, forward('mcpStates'));
     server.registerTool('mywebui_guide', {

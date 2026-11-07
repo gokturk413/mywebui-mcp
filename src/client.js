@@ -5,12 +5,30 @@ export class GatewayError extends Error {
     constructor(code, message, status) { super(message); this.code = code; if (status != null) this.status = status; }
 }
 
-export class GatewayClient {
-    #url; #user; #password; #token; #refresh = null; #instance; #fetch; #loginTimeoutMs; #callTimeoutMs;
+const LOGIN_BACKOFF_MS = 60000;   // web.0 locks a user after repeated failures
+const NEEDS_CREDENTIALS = 'set MYWEBUI_USER + MYWEBUI_PASSWORD or MYWEBUI_TOKEN (web.0 must have authentication)';
 
-    constructor({ url, user, password, token, instance = 'mywebui.0', fetchImpl = globalThis.fetch, loginTimeoutMs = 15000, callTimeoutMs = 70000 }) {
-        if (!url) throw new GatewayError('config', 'MYWEBUI_URL is not set');
-        this.#url = String(url).replace(/\/+$/, '');
+/** The base address, checked. A message never quotes the value: it may hold a password. */
+function baseUrl(url) {
+    if (!url) throw new GatewayError('config', 'MYWEBUI_URL is not set');
+    let u;
+    try { u = new URL(String(url)); } catch { throw new GatewayError('config', 'MYWEBUI_URL is not a valid address'); }
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new GatewayError('config', 'MYWEBUI_URL must be http or https');
+    if (u.username || u.password) throw new GatewayError('config', 'MYWEBUI_URL must not hold credentials: use MYWEBUI_USER + MYWEBUI_PASSWORD');
+    if (u.search || u.hash) throw new GatewayError('config', 'MYWEBUI_URL must not have a query or a fragment');
+    return (u.origin + u.pathname).replace(/\/+$/, '');
+}
+
+export class GatewayClient {
+    #url; #user; #password; #token; #refresh = null; #instance; #fetch; #loginTimeoutMs; #callTimeoutMs; #now;
+    #authenticating = null;       // the one login or renewal in flight
+    #refused = null;              // the last refused login, until #refusedUntil
+    #refusedUntil = 0;
+
+    constructor({ url, user, password, token, instance = 'mywebui.0', fetchImpl = globalThis.fetch, loginTimeoutMs = 15000, callTimeoutMs = 70000, now = Date.now }) {
+        this.#url = baseUrl(url);
+        if (user && !password) throw new GatewayError('config', `MYWEBUI_USER without MYWEBUI_PASSWORD: ${NEEDS_CREDENTIALS}`);
+        if (!token && !(user && password)) throw new GatewayError('config', `no credentials: ${NEEDS_CREDENTIALS}`);
         this.#user = user || null;
         this.#password = password || null;
         this.#token = token || null;
@@ -18,6 +36,7 @@ export class GatewayClient {
         this.#fetch = fetchImpl;
         this.#loginTimeoutMs = loginTimeoutMs;
         this.#callTimeoutMs = callTimeoutMs;
+        this.#now = now;
     }
 
     /** Server text for a message: coerced to a string, credentials removed. */
@@ -53,13 +72,27 @@ export class GatewayClient {
     async #login() {
         if (!this.#user || !this.#password) return null;
         const t = await this.#tokenRequest({ grant_type: 'password', username: this.#user, password: this.#password });
-        if (!t) throw new GatewayError('login', `web.0 refused the login of "${this.#user}"`);
+        if (!t) {
+            this.#refused = new GatewayError('login', `web.0 refused the login of "${this.#user}"`);
+            this.#refusedUntil = this.#now() + LOGIN_BACKOFF_MS;
+            throw this.#refused;
+        }
+        this.#refused = null;
         return t;
     }
     async #renew() {
         if (this.#refresh && await this.#tokenRequest({ grant_type: 'refresh_token', refresh_token: this.#refresh })) return true;
-        this.#token = null;
         return !!(await this.#login());
+    }
+    #checkRefused() {
+        if (this.#refused && this.#now() < this.#refusedUntil) throw this.#refused;
+    }
+    /** One login or renewal at a time: parallel calls share the one in flight, and its outcome. */
+    #authenticate(step) {
+        if (!this.#authenticating) {
+            this.#authenticating = (async () => { this.#checkRefused(); return step(); })().finally(() => { this.#authenticating = null; });
+        }
+        return this.#authenticating;
     }
     async #post(command, body) {
         const headers = { 'Content-Type': 'application/json', 'X-Mywebui-Gateway': '1' };
@@ -71,13 +104,20 @@ export class GatewayClient {
 
     /** One gateway command; resolves the answer, throws GatewayError(code, reason) on a refusal. */
     async call(command, body = {}) {
-        if (!this.#token) await this.#login();
+        await this.#authenticating?.catch(() => { });   // its outcome is looked at next
+        this.#checkRefused();
+        if (!this.#token) await this.#authenticate(() => this.#login());
+        const sent = this.#token;
         let res = await this.#post(command, body);
-        if (res.status === 401 && (this.#user || this.#refresh) && await this.#renew()) res = await this.#post(command, body);
+        if (res.status === 401 && (this.#user || this.#refresh)) {
+            // a parallel call may have renewed the token while this one was on its way
+            if (this.#token !== sent || await this.#authenticate(() => this.#renew())) res = await this.#post(command, body);
+        }
         const j = await res.json().catch(() => null);
         if (!res.ok) throw new GatewayError(res.status === 401 ? 'login' : 'http', `${command}: HTTP ${res.status}${j?.error ? ' - ' + this.#scrub(j.error) : ''}`, res.status);
         if (!j || typeof j !== 'object') throw new GatewayError('http', `${command}: the answer is not JSON (HTTP ${res.status})`, res.status);
-        if (j.ok === false) throw new GatewayError(j.code || 'failed', this.#scrub(j.reason || j.error || 'refused'));
+        // web.0 itself answers 200 { error } when mywebui.0 is stopped or slow
+        if (j.ok !== true) throw new GatewayError(j.code || 'failed', this.#scrub(j.reason || j.error || 'refused'));
         return j;
     }
 }

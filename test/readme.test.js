@@ -15,3 +15,27 @@ test('CI runs only on GitHub-hosted runners (public repository)', () => {
     assert.ok(!/self-hosted|scada-win|scada-linux/.test(ci));
     assert.match(ci, /runs-on: ubuntu-latest/);
 });
+
+test('CI: Node 20, 22, 24, read-only token; the package publishes as public', () => {
+    assert.match(ci, /node: \[20, 22, 24\]/);
+    assert.match(ci, /permissions: \{ contents: read \}/);
+    const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    assert.deepEqual(pkg.publishConfig, { access: 'public' });
+});
+
+test('the README: how the secret reaches the server, and what a write does not do', () => {
+    assert.match(readme, /env_vars = \[[^\]]*"MYWEBUI_PASSWORD"/);
+    assert.match(readme, /NODE_EXTRA_CA_CERTS[^\n]*env_vars|env_vars[^\n]*NODE_EXTRA_CA_CERTS/);
+    assert.ok(readme.includes('~/.claude.json'));
+    assert.match(readme, /about an hour/);
+    assert.ok(!readme.includes('scada:8082'));
+    assert.ok(readme.includes('https://scada:9090'));
+    for (const s of ['authentication', '6 MiB', 'client_max_body_size', 'finding', 'designer']) assert.ok(readme.includes(s), s);
+});
+
+test('LICENSE: only this package', () => {
+    const lic = fs.readFileSync(new URL('../LICENSE', import.meta.url), 'utf8');
+    assert.ok(!/iobroker\.webui|www\/libs|@node-projects|MIT License/.test(lic));
+    assert.ok(lic.includes('Attribution-NonCommercial 4.0 International'));
+    assert.ok(lic.startsWith('@gokturk413/mywebui-mcp'));
+});

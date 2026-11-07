@@ -34,6 +34,16 @@ test('tools call the adapter commands with their arguments', async () => {
     assert.deepEqual(calls[2], ['mcpStates', { pattern: '0_userdata.0.*' }]);
 });
 
+test('the write tool promises what happens; validate takes the report it compares with', async () => {
+    const { mcp, calls } = await connect({});
+    const tools = (await mcp.listTools()).tools;
+    const write = tools.find(t => t.name === 'mywebui_write').description;
+    assert.doesNotMatch(write, /open designers refresh/);
+    assert.match(write, /open runtime pages refresh; an open designer tab does not/);
+    await mcp.callTool({ name: 'mywebui_validate', arguments: { kind: 'report', content: '{}', project: 'dev', name: 'daily' } });
+    assert.deepEqual(calls[0], ['mcpValidate', { kind: 'report', content: '{}', project: 'dev', name: 'daily' }]);
+});
+
 test('a refusal comes back as a tool error with its code', async () => {
     const { mcp } = await connect({ mcpWrite: new GatewayError('read-only', 'project "plant" is not a dev project') });
     const r = await mcp.callTool({ name: 'mywebui_write', arguments: { project: 'plant', kind: 'screen', name: 's', content: '{}' } });
