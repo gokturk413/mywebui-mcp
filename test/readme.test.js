@@ -30,7 +30,7 @@ test('the README: how the secret reaches the server, and what a write does not d
     assert.match(readme, /about an hour/);
     assert.ok(!readme.includes('scada:8082'));
     assert.ok(readme.includes('https://scada:9090'));
-    for (const s of ['authentication', '6 MiB', 'client_max_body_size', 'finding', 'designer']) assert.ok(readme.includes(s), s);
+    for (const s of ['authentication', '6 MiB', 'client_max_body_size', 'finding', 'designer', 'Simple Script', 'heuristic', 'dynamically']) assert.ok(readme.includes(s), s);
 });
 
 test('LICENSE: only this package', () => {

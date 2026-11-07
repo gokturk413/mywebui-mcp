@@ -62,9 +62,17 @@ export class GatewayClient {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({ client_id: 'ioBroker', ...form }).toString(),
         }, this.#loginTimeoutMs);
-        if (!res.ok) return null;
-        const j = await res.json().catch(() => null);
-        if (!j?.access_token) return null;
+        // only these two say the credentials are wrong; a proxy's or server's error says nothing about them
+        if (res.status === 400 || res.status === 401) return null;
+        if (!res.ok) throw new GatewayError('http', `login: HTTP ${res.status}`, res.status);
+        let j;
+        try {
+            j = await res.json();
+        } catch (e) {
+            if (e?.name === 'TimeoutError' || e?.name === 'AbortError') throw new GatewayError('timeout', `login: no answer from ${new URL(this.#url).host} within ${this.#loginTimeoutMs} ms`);
+            throw new GatewayError('http', `login: the answer is not JSON (HTTP ${res.status})`, res.status);
+        }
+        if (!j?.access_token) throw new GatewayError('http', `login: the answer holds no token (HTTP ${res.status})`, res.status);
         this.#token = j.access_token;
         this.#refresh = j.refresh_token ?? null;
         return this.#token;

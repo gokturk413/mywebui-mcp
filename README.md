@@ -22,9 +22,10 @@ No MCP command writes a state. Every write keeps the previous file in `<project>
 
 ## What `mywebui_write` does not do
 
-- Code in a written screen or control can write states (`IOB.setState`, two-way bindings) with the
-  rights of whoever opens the page. That is a finding in the answer, not a refusal, so write only to
-  dev projects and review the code before it goes to a plant project.
+- Code in a written screen or control can write states with the rights of whoever opens the page. Script
+  calls, two-way bindings and Simple Script write commands come back as a warning in the findings, not a
+  refusal, so write only to dev projects and review the code before it goes to a plant project. The scan
+  is a text heuristic and not a proof: a script that builds its call dynamically can escape it.
 - An open designer tab does not reload the write, and a later save there overwrites it. Runtime pages of
   that project refresh; closed documents pick it up when opened.
 - A report's output, schedule and trigger can only be set in the designer. A screen stays out of the
@@ -41,7 +42,7 @@ No MCP command writes a state. Every write keeps the previous file in `<project>
 | `NODE_EXTRA_CA_CERTS` | path to web.0's certificate when it is self-signed |
 
 The server stops at start (exit code 2) when the address is unusable or there are no credentials.
-After a refused login it does not try again for 60 seconds, because web.0 locks a user after repeated failures.
+After a refused login (HTTP 400 or 401 from web.0) it does not try again for 60 seconds, because web.0 locks a user after repeated failures.
 
 Keep the password in the agent's environment or secret store, never in a repository.
 

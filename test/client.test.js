@@ -245,3 +245,69 @@ test('P4 a network failure at login is not a refused login', async () => {
     up = true;
     assert.equal((await c.call('mcpInfo')).ok, true);
 });
+
+test('N2 a 502 at login is an http error, without back-off, and the body is not quoted', async () => {
+    let up = false;
+    const PW = 's3cr3t-pw';
+    const f = fakeFetch((url, init) => {
+        if (url.endsWith('/oauth/token')) return up ? { body: { access_token: 'A1' } } : { status: 502, text: '<html>bad gateway ' + init.body + '</html>' };
+        return { body: { ok: true } };
+    });
+    const c = new GatewayClient({ url: 'http://h', user: 'a', password: PW, fetchImpl: f, now: () => 5 });
+    await assert.rejects(c.call('mcpInfo'), (e) => e.code === 'http' && e.status === 502 && !e.message.includes(PW) && !e.message.includes('bad gateway'));
+    assert.equal(f.calls.length, 1);
+    await assert.rejects(c.call('mcpInfo'), (e) => e.code === 'http');
+    assert.equal(f.calls.length, 2, 'the next call reaches the server');
+    up = true;
+    assert.equal((await c.call('mcpInfo')).ok, true);
+});
+
+test('N2 a 400 and a 401 are a refused login and the back-off holds', async () => {
+    for (const status of [400, 401]) {
+        const f = fakeFetch(() => ({ status, body: { error: 'invalid_grant' } }));
+        const c = new GatewayClient({ url: 'http://h', user: 'a', password: 'p', fetchImpl: f, now: () => 5 });
+        await assert.rejects(c.call('mcpInfo'), (e) => e.code === 'login');
+        await assert.rejects(c.call('mcpInfo'), (e) => e.code === 'login');
+        assert.equal(f.calls.length, 1, String(status));
+    }
+});
+
+test('N2 other answers at login: a redirect, a login page, a missing token, a bad body', async () => {
+    const PW = 's3cr3t-pw';
+    for (const answer of [{ status: 302, text: '' }, { status: 403, body: { error: 'x' } }, { status: 500, body: { error: PW } }, { text: '<html>login ' + PW + '</html>' }, { body: { nothing: 1 } }]) {
+        const f = fakeFetch(() => answer);
+        const c = new GatewayClient({ url: 'http://h', user: 'a', password: PW, fetchImpl: f, now: () => 5 });
+        await assert.rejects(c.call('mcpInfo'), (e) => e.code === 'http' && !e.message.includes(PW), JSON.stringify(answer));
+        await assert.rejects(c.call('mcpInfo'), (e) => e.code === 'http');
+        assert.equal(f.calls.length, 2, 'no back-off: ' + JSON.stringify(answer));
+    }
+});
+
+test('N2 a timeout while reading the body of the login answer is a timeout', async () => {
+    const f = async (url, init) => ({
+        ok: true, status: 200,
+        json: () => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason))),
+    });
+    const c = new GatewayClient({ url: 'http://h', user: 'a', password: 'p', loginTimeoutMs: 20, fetchImpl: f, now: () => 5 });
+    await assert.rejects(c.call('mcpInfo'), (e) => e.code === 'timeout');
+});
+
+test('N2 an expired token and a 503 on renewal: http, no back-off, no password login', async () => {
+    let down = true, logins = 0, posts = 0;
+    const f = fakeFetch((url, init, n) => {
+        if (url.endsWith('/oauth/token')) {
+            const grant = new URLSearchParams(init.body).get('grant_type');
+            if (grant === 'password') { logins++; return { body: { access_token: 'A1', refresh_token: 'R1' } }; }
+            return down ? { status: 503, text: 'unavailable' } : { body: { access_token: 'A2', refresh_token: 'R2' } };
+        }
+        posts++;
+        return init.headers.Authorization === 'Bearer A2' ? { body: { ok: true } } : { status: 401, body: {} };
+    });
+    const c = new GatewayClient({ url: 'http://h', user: 'a', password: 'p', fetchImpl: f, now: () => 5 });
+    await assert.rejects(c.call('mcpInfo'), (e) => e.code === 'http' && e.status === 503);
+    assert.equal(logins, 1, 'the renewal did not fall back to the password');
+    const before = posts;
+    down = false;
+    assert.equal((await c.call('mcpInfo')).ok, true);
+    assert.ok(posts > before, 'the next call reached the server');
+});
