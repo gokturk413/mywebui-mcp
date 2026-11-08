@@ -12,6 +12,11 @@ test('the README names every tool, every variable and the admin switch', () => {
 });
 
 test('CI runs only on GitHub-hosted runners (public repository)', () => {
+    for (const f of fs.readdirSync(new URL('../.github/workflows/', import.meta.url))) {
+        const y = fs.readFileSync(new URL('../.github/workflows/' + f, import.meta.url), 'utf8');
+        assert.ok(!/self-hosted|scada-win|scada-linux/.test(y), f);
+        assert.match(y, /runs-on: ubuntu-latest/, f);
+    }
     assert.ok(!/self-hosted|scada-win|scada-linux/.test(ci));
     assert.match(ci, /runs-on: ubuntu-latest/);
 });

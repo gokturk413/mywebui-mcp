@@ -20,6 +20,7 @@ browser global `window.IOB` is the API.
 | texts in several languages | mywebui-translations |
 | colours, light/dark, themes | mywebui-theming |
 | screen layout, navigation menu, transitions, multi-view, startup screen | mywebui-screens |
+| a ready-made pump, valve, tank or instrument symbol | Gallery → Symbols: it drops as inline SVG, see `docs/symbol-templates.md` |
 | clicks and value changes without code (Simple Script), `IOB.api`, screen and Global Script | mywebui-scripting |
 | JavaScript that runs on the server all the time | mywebui-server-scripts |
 | reports (PDF/HTML/CSV), history queries, ECharts | mywebui-reports |
