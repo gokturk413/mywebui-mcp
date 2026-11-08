@@ -95,7 +95,12 @@ test('a network failure becomes a network error without secrets', async () => {
 });
 
 test('a timeout becomes a timeout error', async () => {
-    const f = (url, init) => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason)));
+    // a request that never answers; like a real socket it keeps the event loop alive (the timer of
+    // AbortSignal.timeout does not, so without this Node 22 ends the test before the abort fires)
+    const f = (url, init) => new Promise((_, reject) => {
+        const socket = setInterval(() => { }, 1000);
+        init.signal.addEventListener('abort', () => { clearInterval(socket); reject(init.signal.reason); });
+    });
     await assert.rejects(new GatewayClient({ url: 'http://h', token: 'T', callTimeoutMs: 20, fetchImpl: f }).call('mcpInfo'),
         (e) => e.code === 'timeout');
     await assert.rejects(new GatewayClient({ url: 'http://h', user: 'a', password: 'p', loginTimeoutMs: 20, fetchImpl: f }).call('mcpInfo'),
@@ -286,7 +291,11 @@ test('N2 other answers at login: a redirect, a login page, a missing token, a ba
 test('N2 a timeout while reading the body of the login answer is a timeout', async () => {
     const f = async (url, init) => ({
         ok: true, status: 200,
-        json: () => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason))),
+        // a body that never ends; the interval stands for the open socket (see the timeout test above)
+        json: () => new Promise((_, reject) => {
+            const socket = setInterval(() => { }, 1000);
+            init.signal.addEventListener('abort', () => { clearInterval(socket); reject(init.signal.reason); });
+        }),
     });
     const c = new GatewayClient({ url: 'http://h', user: 'a', password: 'p', loginTimeoutMs: 20, fetchImpl: f, now: () => 5 });
     await assert.rejects(c.call('mcpInfo'), (e) => e.code === 'timeout');
